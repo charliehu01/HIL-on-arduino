@@ -2,6 +2,7 @@
 #include "tdc_contract.h"
 #include "spi_controller.h"
 #include "decode.h"
+#include <cmath>
 
 const uint8_t CS_A = 10, CS_B = 9, INT_A = 2, INT_B = 3;
 const float PEAK_NS       = -20.0f;   // expected tA - tB (= -delay). Update for the delay sweep.
@@ -40,13 +41,47 @@ void printRaw(uint8_t cs, uint8_t status, const uint32_t r[N_RESULT_REGS],
 //   - if DEBUG_RAW, call printRaw(...)
 //   - return the number of stops stored in ns[] (max 5)
 int readArm(uint8_t cs, bool got, float *ns) {
-  return -1;   // replace
+  if (!got) {
+    return -1;
+  }
+
+  uint8_t status = readReg(cs, REG_INT_STATUS);
+  
+  uint32_t r[N_RESULT_REGS];
+  readResult(cs, r);
+
+  int stops = 0;
+
+  for (int i = 0; i < 5; i++) {
+    if (r[i * 2] == 0) {
+      break;
+    }
+
+    ns[i] = decodeNs(r[i * 2], r[11], r[12], CAL2_PERIODS, TDC_CLK_NS);
+    stops++;
+  }
+
+  if (DEBUG_RAW) {
+    printRaw(cs, status, r, ns, stops);
+  }
+
+  return stops;
 }
 
 // TODO 2: count coincidences between arm A and arm B in this measurement.
 //   A coincidence is a pair (a[i], b[j]) with |(a[i] - b[j]) - PEAK_NS| <= COINC_HALF_NS.
 int countCoincidences(const float *a, int nA, const float *b, int nB) {
-  return 0;    // replace
+  int coinc = 0;
+
+  for (int i = 0; i < nA; i++) {
+    for (int j = 0; j < nB; j++) {
+      if (std::abs(a[i] - b[j] - PEAK_NS) <= COINC_HALF_NS) {
+        coinc++;
+      }
+    }
+  }
+  
+  return coinc;
 }
 
 void setup() {
